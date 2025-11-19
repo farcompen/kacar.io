@@ -7,7 +7,8 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       // Polyfill process.env.API_KEY so it works in the browser after build
-      'process.env.API_KEY': JSON.stringify(env.API_KEY)
+      // Use default empty string to prevent "undefined" being injected which crashes SDK constructor
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || '')
     },
     server: {
       port: 3000

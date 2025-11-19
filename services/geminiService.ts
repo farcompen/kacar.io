@@ -1,8 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 
-// Initialize the client with the API key from the environment
-// The environment variable process.env.API_KEY is guaranteed to be present.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// We do not initialize the client at the top level anymore.
+// This prevents the entire application from crashing (White/Black screen of death)
+// if the API Key is missing or invalid during the initial bundle load.
 
 export const generateGameOverCommentary = async (
   nickname: string,
@@ -11,6 +11,17 @@ export const generateGameOverCommentary = async (
   timeAliveSeconds: number
 ): Promise<string> => {
   try {
+    // Check if API Key is available before attempting to use SDK
+    const apiKey = process.env.API_KEY;
+    
+    if (!apiKey) {
+      console.warn("Gemini API Key is missing in environment variables.");
+      return "Commentator is on strike (API Key missing). Please configure Vercel environment variables.";
+    }
+
+    // Initialize on demand
+    const ai = new GoogleGenAI({ apiKey: apiKey });
+    
     const model = 'gemini-2.5-flash';
     const prompt = `
       You are a sarcastic and witty esports commentator for a game called "Cell.io" (similar to Agar.io).
