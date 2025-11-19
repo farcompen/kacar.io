@@ -33,10 +33,10 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
     const name = nickname.trim() || 'Guest';
     
     // Save to DB immediately upon entry (User Request)
-    if (isDbConnected) {
-      // Saving with initial mass (usually 20) to register the player
-      saveScoreToDb(name, INITIAL_PLAYER_RADIUS);
-    }
+    // if (isDbConnected) {
+    //   // Saving with initial mass (usually 20) to register the player
+    //   saveScoreToDb(name, INITIAL_PLAYER_RADIUS);
+    // }
 
     onStart(name);
   };
