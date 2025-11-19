@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { getGlobalLeaderboard, GlobalScore, saveScoreToDb } from '../services/supabaseService';
-import { INITIAL_PLAYER_RADIUS } from '../constants';
+import { getGlobalLeaderboard, GlobalScore } from '../services/supabaseService';
+
 
 interface MenuProps {
   onStart: (nickname: string) => void;
