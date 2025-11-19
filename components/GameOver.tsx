@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { generateGameOverCommentary } from '../services/geminiService';
+import { saveScoreToDb } from '../services/supabaseService';
 
 interface GameOverProps {
   score: number;
@@ -12,13 +13,21 @@ interface GameOverProps {
 const GameOver: React.FC<GameOverProps> = ({ score, nickname, killerName, startTime, onRestart }) => {
   const [commentary, setCommentary] = useState<string>('Analyzing gameplay...');
   const [loading, setLoading] = useState(true);
+  const hasSavedScore = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
     const timeAlive = Math.floor((Date.now() - startTime) / 1000);
+    const finalScore = Math.floor(score);
+
+    // Save Score to DB (Only once)
+    if (!hasSavedScore.current && finalScore > 0) {
+      hasSavedScore.current = true;
+      saveScoreToDb(nickname, finalScore);
+    }
 
     const fetchCommentary = async () => {
-      const text = await generateGameOverCommentary(nickname, score, killerName, timeAlive);
+      const text = await generateGameOverCommentary(nickname, finalScore, killerName, timeAlive);
       if (isMounted) {
         setCommentary(text);
         setLoading(false);
