@@ -2,8 +2,34 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Kacar.io - AI Edition</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    
+    <!-- Primary Meta Tags -->
+    <title>Kacar.io | Play Free AI-Powered Cell Eating Game </title>
+    <meta name="title" content="Kacar.io | Play Free AI-Powered Cell Eating Game | Agar.io Clone" />
+    <meta name="description" content="Play Kacar.io, the ultimate free browser game inspired by Agar.io. Eat cells, split to attack, grow your blob, and compete on the global leaderboard with AI commentary!" />
+    <meta name="keywords" content="agar.io, agario, cell game, io games, multiplayer game, browser game, blob game, eat cells, split game, free games, online games, kacar.io" />
+    <meta name="robots" content="index, follow" />
+    <meta name="language" content="English" />
+    <meta name="author" content="Kacar.io Team" />
+
+    <!-- Open Graph / Facebook / Discord -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://kacar.io/" />
+    <meta property="og:title" content="Kacar.io - Eat, Grow, Survive" />
+    <meta property="og:description" content="Join the arena! Eat smaller cells, avoid bigger ones, and dominate the leaderboard in this addictive AI-powered .io game." />
+    <meta property="og:image" content="https://kacar.io/og-image.jpg" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://kacar.io/" />
+    <meta property="twitter:title" content="Kacar.io - Eat, Grow, Survive" />
+    <meta property="twitter:description" content="Join the arena! Eat smaller cells, avoid bigger ones, and dominate the leaderboard in this addictive AI-powered .io game." />
+    <meta property="twitter:image" content="https://kacar.io/og-image.jpg" />
+
+    <!-- Favicon logic can be added here -->
+    <meta name="theme-color" content="#111827" />
+
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       body {
@@ -12,25 +38,45 @@
         background-color: #111;
         color: white;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        overscroll-behavior: none;
       }
       canvas {
         display: block;
       }
     </style>
-<script type="importmap">
-{
-  "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "vite": "https://aistudiocdn.com/vite@^7.2.2",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
-    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.83.0"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
+
+    <!-- Structured Data for Google (Game Schema) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "VideoGame",
+      "name": "Kacar.io",
+      "description": "A fast-paced multiplayer-style .io game where players control a cell, eat food to grow, and compete against bots and other players.",
+      "genre": ["Action", "Strategy", "IO Game"],
+      "playMode": "SinglePlayer",
+      "applicationCategory": "Browser Game",
+      "operatingSystem": "Web Browser",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
+
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://aistudiocdn.com/react@^19.2.0",
+        "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+        "react/": "https://aistudiocdn.com/react@^19.2.0/",
+        "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+        "vite": "https://aistudiocdn.com/vite@^7.2.2",
+        "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+        "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.83.0"
+      }
+    }
+    </script>
 </head>
   <body>
     <div id="root"></div>
