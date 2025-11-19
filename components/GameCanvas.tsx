@@ -1,6 +1,17 @@
 import React, { useEffect, useRef } from 'react';
 import { GameState, BlobEntity, FoodEntity, LeaderboardEntry } from '../types';
-import { WORLD_WIDTH, WORLD_HEIGHT, INITIAL_PLAYER_RADIUS, FOOD_RADIUS, MAX_FOOD, MAX_BOTS, getRandomColor, BOT_NAMES } from '../constants';
+import { 
+  WORLD_WIDTH, 
+  WORLD_HEIGHT, 
+  INITIAL_PLAYER_RADIUS, 
+  FOOD_RADIUS, 
+  MAX_FOOD, 
+  MAX_BOTS, 
+  MIN_SPLIT_RADIUS,
+  SPLIT_FORCE,
+  getRandomColor, 
+  BOT_NAMES 
+} from '../constants';
 
 interface GameCanvasProps {
   nickname: string;
@@ -13,16 +24,9 @@ interface GameCanvasProps {
 const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScore, setLeaderboard, setKillerName }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
-  // Game state Refs (mutable to avoid re-renders in game loop)
-  const playerRef = useRef<BlobEntity>({
-    id: 'player',
-    x: WORLD_WIDTH / 2,
-    y: WORLD_HEIGHT / 2,
-    radius: INITIAL_PLAYER_RADIUS,
-    color: '#FFFFFF',
-    name: nickname,
-    isPlayer: true,
-  });
+  // Game state Refs
+  // Player is now an array of blobs to support splitting
+  const playerRef = useRef<BlobEntity[]>([]);
   
   const botsRef = useRef<BlobEntity[]>([]);
   const foodsRef = useRef<FoodEntity[]>([]);
@@ -32,16 +36,18 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
 
   // Initialize game entities
   useEffect(() => {
-    // Reset player
-    playerRef.current = {
-      id: 'player',
+    // Reset player with a single blob
+    playerRef.current = [{
+      id: 'player-init',
       x: Math.random() * WORLD_WIDTH,
       y: Math.random() * WORLD_HEIGHT,
       radius: INITIAL_PLAYER_RADIUS,
       color: '#3b82f6', // Player is blue-ish
       name: nickname,
       isPlayer: true,
-    };
+      boostX: 0,
+      boostY: 0
+    }];
 
     // Generate bots
     botsRef.current = Array.from({ length: MAX_BOTS }).map((_, i) => ({
@@ -73,7 +79,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
       const canvas = canvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
-      // Calculate mouse position relative to center of screen (0,0 is center)
+      // Calculate mouse position relative to center of screen
       mouseRef.current = {
         x: e.clientX - rect.left - canvas.width / 2,
         y: e.clientY - rect.top - canvas.height / 2,
@@ -82,6 +88,57 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
     window.addEventListener('mousemove', handleMouseMove);
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
+
+  // Spacebar Split Handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        splitPlayer();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const splitPlayer = () => {
+    const currentBlobs = playerRef.current;
+    if (currentBlobs.length >= 16) return; // Cap max cells
+
+    const newBlobs: BlobEntity[] = [];
+    const updatedBlobs: BlobEntity[] = [];
+
+    currentBlobs.forEach(blob => {
+      if (blob.radius >= MIN_SPLIT_RADIUS) {
+         // Calculate new size
+         const newArea = (Math.PI * blob.radius * blob.radius) / 2;
+         const newRadius = Math.sqrt(newArea / Math.PI);
+         
+         // Direction for the split (towards mouse)
+         const angle = Math.atan2(mouseRef.current.y, mouseRef.current.x);
+         
+         // Update original blob (stays roughly where it is)
+         updatedBlobs.push({
+           ...blob,
+           radius: newRadius
+         });
+
+         // Create projectile blob
+         newBlobs.push({
+           ...blob,
+           id: `${blob.id}-${Date.now()}`,
+           x: blob.x + Math.cos(angle) * (blob.radius), // Start slightly ahead to avoid instant overlap
+           y: blob.y + Math.sin(angle) * (blob.radius),
+           radius: newRadius,
+           boostX: Math.cos(angle) * SPLIT_FORCE,
+           boostY: Math.sin(angle) * SPLIT_FORCE
+         });
+      } else {
+        updatedBlobs.push(blob);
+      }
+    });
+    
+    playerRef.current = [...updatedBlobs, ...newBlobs];
+  };
 
   // Game Loop
   useEffect(() => {
@@ -98,43 +155,85 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
     resizeCanvas();
 
     const update = () => {
-      if (!playerRef.current) return;
+      if (playerRef.current.length === 0) return;
 
-      const player = playerRef.current;
+      // --- 1. Update Player Blobs ---
+      playerRef.current.forEach(player => {
+        // Movement Logic
+        // Heavier = Slower
+        const speed = 200 / player.radius + 2; 
+        const angle = Math.atan2(mouseRef.current.y, mouseRef.current.x);
+        
+        // Move towards mouse
+        const distMouse = Math.hypot(mouseRef.current.x, mouseRef.current.y);
+        
+        let moveX = 0;
+        let moveY = 0;
 
-      // --- 1. Update Player Position ---
-      // Calculate velocity based on mouse distance
-      // Slower when bigger
-      const speed = 200 / player.radius + 2; 
-      const angle = Math.atan2(mouseRef.current.y, mouseRef.current.x);
-      
-      // Only move if mouse is somewhat far from center to prevent jitter
-      const distMouse = Math.hypot(mouseRef.current.x, mouseRef.current.y);
-      if (distMouse > 5) {
-          player.x += Math.cos(angle) * speed;
-          player.y += Math.sin(angle) * speed;
+        if (distMouse > 5) {
+            moveX = Math.cos(angle) * speed;
+            moveY = Math.sin(angle) * speed;
+        }
+
+        // Add boost (splitting impulse)
+        if (player.boostX) {
+          moveX += player.boostX;
+          player.boostX *= 0.9; // Friction
+          if (Math.abs(player.boostX) < 0.1) player.boostX = 0;
+        }
+        if (player.boostY) {
+          moveY += player.boostY;
+          player.boostY *= 0.9; // Friction
+          if (Math.abs(player.boostY) < 0.1) player.boostY = 0;
+        }
+
+        player.x += moveX;
+        player.y += moveY;
+
+        // Boundaries
+        player.x = Math.max(player.radius, Math.min(WORLD_WIDTH - player.radius, player.x));
+        player.y = Math.max(player.radius, Math.min(WORLD_HEIGHT - player.radius, player.y));
+      });
+
+      // --- 2. Resolve Player-Player Collisions (Repulsion) ---
+      // Prevent cells from stacking perfectly on top of each other
+      for (let i = 0; i < playerRef.current.length; i++) {
+        for (let j = i + 1; j < playerRef.current.length; j++) {
+          const b1 = playerRef.current[i];
+          const b2 = playerRef.current[j];
+          const dx = b1.x - b2.x;
+          const dy = b1.y - b2.y;
+          const dist = Math.hypot(dx, dy);
+          const minDist = b1.radius + b2.radius;
+
+          // If overlapping (and not currently merging - merging logic omitted for simplicity of this step)
+          if (dist < minDist && dist > 0) {
+             const overlap = minDist - dist;
+             const nx = dx / dist;
+             const ny = dy / dist;
+             
+             // Push apart gently
+             const force = overlap * 0.05; // Soft body physics
+             
+             b1.x += nx * force;
+             b1.y += ny * force;
+             b2.x -= nx * force;
+             b2.y -= ny * force;
+          }
+        }
       }
 
-      // Boundaries
-      player.x = Math.max(player.radius, Math.min(WORLD_WIDTH - player.radius, player.x));
-      player.y = Math.max(player.radius, Math.min(WORLD_HEIGHT - player.radius, player.y));
-
-      // --- 2. Update Bots ---
+      // --- 3. Update Bots ---
       botsRef.current.forEach(bot => {
-        // Simple AI: Wander with some random direction changes
         if (Math.random() < 0.02) {
           bot.dx = (Math.random() - 0.5) * 4;
           bot.dy = (Math.random() - 0.5) * 4;
         }
 
-        // Helper to check boundaries and bounce
         if (bot.x - bot.radius < 0 || bot.x + bot.radius > WORLD_WIDTH) bot.dx = - (bot.dx || 1);
         if (bot.y - bot.radius < 0 || bot.y + bot.radius > WORLD_HEIGHT) bot.dy = - (bot.dy || 1);
         
-        // Speed adjustment by size
         const botSpeed = (200 / bot.radius + 1.5) * 0.5; 
-        
-        // Normalize vector
         const mag = Math.hypot(bot.dx || 0, bot.dy || 0);
         const vx = (bot.dx || 0) / (mag || 1) * botSpeed;
         const vy = (bot.dy || 0) / (mag || 1) * botSpeed;
@@ -142,28 +241,29 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         bot.x += vx;
         bot.y += vy;
 
-        // Hard boundary clamp
         bot.x = Math.max(bot.radius, Math.min(WORLD_WIDTH - bot.radius, bot.x));
         bot.y = Math.max(bot.radius, Math.min(WORLD_HEIGHT - bot.radius, bot.y));
       });
 
-      // --- 3. Collision Detection (Eating) ---
+      // --- 4. Collision Detection (Eating) ---
       
-      // Helper: Area calc
       const getArea = (r: number) => Math.PI * r * r;
       const getRadius = (area: number) => Math.sqrt(area / Math.PI);
 
-      // Player eats Food
+      // Player(s) vs Food
       foodsRef.current = foodsRef.current.filter(food => {
-        const dist = Math.hypot(player.x - food.x, player.y - food.y);
-        if (dist < player.radius) {
-          // Grow
-          const newArea = getArea(player.radius) + getArea(food.radius);
-          player.radius = getRadius(newArea);
-          setScore(Math.floor(player.radius)); // Sync score for UI sometimes
-          return false; // Remove food
+        let eaten = false;
+        // Check against all player blobs
+        for (const playerBlob of playerRef.current) {
+          const dist = Math.hypot(playerBlob.x - food.x, playerBlob.y - food.y);
+          if (dist < playerBlob.radius) {
+            const newArea = getArea(playerBlob.radius) + getArea(food.radius);
+            playerBlob.radius = getRadius(newArea);
+            eaten = true;
+            break; 
+          }
         }
-        return true;
+        return !eaten;
       });
 
       // Replenish Food
@@ -177,43 +277,75 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         });
       }
 
-      // Bot vs Player Interaction
-      let playerDied = false;
+      // Bots vs Player Blobs Interaction
+      // We need to handle:
+      // 1. Player eats Bot
+      // 2. Bot eats Player
       
-      // Sort entities by size for layered rendering later, but here for logic
-      // Check Player vs Bots
-      botsRef.current = botsRef.current.filter(bot => {
-        if (playerDied) return true;
+      const remainingBots: BlobEntity[] = [];
+      let playerWasEaten = false;
+      let killer = '';
 
-        const dist = Math.hypot(player.x - bot.x, player.y - bot.y);
-        const overlap = dist < Math.max(player.radius, bot.radius);
+      botsRef.current.forEach(bot => {
+        let botEaten = false;
         
-        if (overlap) {
-            // Rule: Must be 10% bigger to eat
-            if (player.radius > bot.radius * 1.1) {
-                // Player eats bot
-                const newArea = getArea(player.radius) + getArea(bot.radius);
-                player.radius = getRadius(newArea);
-                setScore(Math.floor(player.radius));
-                return false; // Bot dies
-            } else if (bot.radius > player.radius * 1.1) {
-                // Bot eats player
-                playerDied = true;
-                setKillerName(bot.name || 'Unknown Cell');
-                setGameState(GameState.GAME_OVER);
-                return true;
+        // Check against all player blobs
+        // Using a for loop to allow modification of playerRef inside if needed (though we filter later)
+        // Actually safer to just mark things for deletion
+        
+        // Check if Bot eats any Player Blob
+        for (const playerBlob of playerRef.current) {
+            if (botEaten) break;
+
+            const dist = Math.hypot(playerBlob.x - bot.x, playerBlob.y - bot.y);
+            const overlap = dist < Math.max(playerBlob.radius, bot.radius);
+
+            if (overlap) {
+                if (playerBlob.radius > bot.radius * 1.1) {
+                    // Player eats Bot
+                    const newArea = getArea(playerBlob.radius) + getArea(bot.radius);
+                    playerBlob.radius = getRadius(newArea);
+                    botEaten = true;
+                } else if (bot.radius > playerBlob.radius * 1.1) {
+                    // Bot eats Player Blob
+                    // Mark player blob as dead (set radius to 0 or filter out later)
+                    const newArea = getArea(bot.radius) + getArea(playerBlob.radius);
+                    bot.radius = getRadius(newArea);
+                    playerBlob.radius = 0; // Mark for removal
+                    playerWasEaten = true;
+                    killer = bot.name || 'Unknown';
+                }
             }
         }
-        return true;
+
+        if (!botEaten) {
+            remainingBots.push(bot);
+        }
       });
+      
+      botsRef.current = remainingBots;
+      
+      // Remove dead player blobs
+      if (playerWasEaten) {
+          playerRef.current = playerRef.current.filter(p => p.radius > 0);
+          if (playerRef.current.length === 0) {
+              setKillerName(killer);
+              setGameState(GameState.GAME_OVER);
+          }
+      }
 
       // Replenish Bots
        while (botsRef.current.length < MAX_BOTS) {
+         // Base spawn size on average player size so it stays challenging/fair
+         const avgPlayerRadius = playerRef.current.length > 0 
+            ? playerRef.current.reduce((sum, p) => sum + p.radius, 0) / playerRef.current.length 
+            : INITIAL_PLAYER_RADIUS;
+
          botsRef.current.push({
             id: `bot-new-${Date.now()}`,
             x: Math.random() * WORLD_WIDTH,
             y: Math.random() * WORLD_HEIGHT,
-            radius: Math.max(10, Math.random() * (player.radius * 1.5)), // Spawn some threatening ones
+            radius: Math.max(10, Math.random() * (avgPlayerRadius * 1.5)), 
             color: getRandomColor(),
             name: BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)],
             dx: (Math.random() - 0.5) * 2,
@@ -221,13 +353,31 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
          });
        }
 
-      // Update Leaderboard periodically
+      // Update Score (Total Mass)
+      const totalScore = playerRef.current.reduce((acc, p) => acc + Math.floor(p.radius), 0);
+      setScore(totalScore);
+
+      // Update Leaderboard
       if (Date.now() - lastLeaderboardUpdateRef.current > 1000) {
-        const allEntities = [...botsRef.current, player].map(e => ({
-            id: e.id,
-            name: e.name || 'Cell',
-            score: Math.floor(e.radius)
+        // For leaderboard, if player has multiple cells, we can treat them as one aggregate score
+        // or just show the largest cell. Usually games show the aggregate.
+        const playerEntry = {
+            id: 'player',
+            name: nickname,
+            score: totalScore
+        };
+
+        const botEntries = botsRef.current.map(b => ({
+            id: b.id,
+            name: b.name || 'Cell',
+            score: Math.floor(b.radius)
         }));
+
+        const allEntities = [...botEntries];
+        if (playerRef.current.length > 0) {
+            allEntities.push(playerEntry);
+        }
+
         allEntities.sort((a, b) => b.score - a.score);
         setLeaderboard(allEntities.slice(0, 5));
         lastLeaderboardUpdateRef.current = Date.now();
@@ -235,24 +385,64 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
     };
 
     const draw = () => {
-      const player = playerRef.current;
-      
+      if (playerRef.current.length === 0) return;
+
       // Clear background
       ctx.fillStyle = '#1a1a1a';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Camera Transform
-      // We want the player in the center of the screen.
-      // Calculate zoom level based on player size
-      // Smooth zoom: starts at 1, decreases as radius increases
-      const zoom = Math.max(0.1, 1 / (Math.pow(player.radius, 0.4) / 3)); 
+      // Camera Logic
+      // Find centroid of all player blobs
+      let centroidX = 0;
+      let centroidY = 0;
+      let totalMass = 0;
+
+      playerRef.current.forEach(p => {
+          centroidX += p.x * p.radius; // Weighted by size
+          centroidY += p.y * p.radius;
+          totalMass += p.radius;
+      });
+
+      if (totalMass > 0) {
+          centroidX /= totalMass;
+          centroidY /= totalMass;
+      } else {
+          // Fallback
+          centroidX = playerRef.current[0].x;
+          centroidY = playerRef.current[0].y;
+      }
+
+      // Calculate required zoom to fit all blobs
+      // Find bounds relative to centroid
+      let maxDistX = 0;
+      let maxDistY = 0;
       
+      playerRef.current.forEach(p => {
+          const dx = Math.abs(p.x - centroidX) + p.radius * 2; // Add padding
+          const dy = Math.abs(p.y - centroidY) + p.radius * 2;
+          if (dx > maxDistX) maxDistX = dx;
+          if (dy > maxDistY) maxDistY = dy;
+      });
+
+      // Base zoom on the spread of cells + total size
+      // Ensure minimum zoom level based on total mass as well
+      const spreadZoom = Math.min(
+          canvas.width / (maxDistX * 2.5 || 1), 
+          canvas.height / (maxDistY * 2.5 || 1)
+      );
+      
+      const sizeZoom = 1 / (Math.pow(totalMass / playerRef.current.length, 0.4) / 3);
+      
+      // Use the smaller zoom (either to fit spread or based on size)
+      let zoom = Math.min(spreadZoom, sizeZoom);
+      zoom = Math.max(0.1, Math.min(2, zoom)); // Clamp zoom
+
       ctx.save();
       ctx.translate(canvas.width / 2, canvas.height / 2);
       ctx.scale(zoom, zoom);
-      ctx.translate(-player.x, -player.y);
+      ctx.translate(-centroidX, -centroidY);
 
-      // Draw Grid (Optional visual aid)
+      // Draw Grid
       ctx.strokeStyle = '#333';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -279,8 +469,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         ctx.fill();
       });
 
-      // Draw All Blobs (Player + Bots) sorted by size so small ones are under big ones
-      const allBlobs = [...botsRef.current, player].sort((a, b) => a.radius - b.radius);
+      // Draw All Blobs (Player + Bots) sorted by size
+      const allBlobs = [...botsRef.current, ...playerRef.current].sort((a, b) => a.radius - b.radius);
 
       allBlobs.forEach(blob => {
         ctx.fillStyle = blob.color;
@@ -288,9 +478,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         ctx.arc(blob.x, blob.y, blob.radius, 0, Math.PI * 2);
         ctx.fill();
         
-        // Stroke for definition
-        ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-        ctx.lineWidth = 3;
+        // Stroke
+        ctx.strokeStyle = blob.isPlayer ? '#fff' : 'rgba(0,0,0,0.2)';
+        ctx.lineWidth = blob.isPlayer ? 4 : 3;
         ctx.stroke();
 
         // Name

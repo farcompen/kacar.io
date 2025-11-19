@@ -17,8 +17,10 @@ export interface BlobEntity {
   color: string;
   name?: string;
   isPlayer?: boolean;
-  dx?: number; // Velocity X for bots
-  dy?: number; // Velocity Y for bots
+  dx?: number; // Velocity X
+  dy?: number; // Velocity Y
+  boostX?: number; // Impulse velocity X for splitting
+  boostY?: number; // Impulse velocity Y for splitting
 }
 
 export interface FoodEntity {
