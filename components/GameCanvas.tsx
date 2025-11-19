@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { GameState, BlobEntity, FoodEntity, LeaderboardEntry } from '../types';
-import { WORLD_WIDTH, WORLD_HEIGHT, INITIAL_PLAYER_RADIUS, FOOD_RADIUS, MAX_FOOD, MAX_BOTS, COLORS, getRandomColor, BOT_NAMES } from '../constants';
+import { WORLD_WIDTH, WORLD_HEIGHT, INITIAL_PLAYER_RADIUS, FOOD_RADIUS, MAX_FOOD, MAX_BOTS, getRandomColor, BOT_NAMES } from '../constants';
 
 interface GameCanvasProps {
   nickname: string;
@@ -166,12 +166,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         return true;
       });
 
-      // Bots eat Food (Optional for realism, keeps food count dynamic)
-      botsRef.current.forEach(bot => {
-        // Simple check: just check nearby foods (optimization skipped for simplicity)
-         // Actually, for performance, let's skip bot-food collision for now or do simple check
-      });
-
       // Replenish Food
       while (foodsRef.current.length < MAX_FOOD) {
         foodsRef.current.push({
@@ -250,7 +244,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
       // Camera Transform
       // We want the player in the center of the screen.
       // Calculate zoom level based on player size
-      const baseScale = 1;
       // Smooth zoom: starts at 1, decreases as radius increases
       const zoom = Math.max(0.1, 1 / (Math.pow(player.radius, 0.4) / 3)); 
       
