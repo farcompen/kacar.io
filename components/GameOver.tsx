@@ -21,8 +21,7 @@ const GameOver: React.FC<GameOverProps> = ({ score, nickname, killerName, startT
     const finalScore = Math.floor(score);
 
     // Save Score to DB (Only once)
-    if (!hasSavedScore.current ) {
-     console.log("saved score",hasSavedScore.current);
+    if (!hasSavedScore.current && finalScore > 0) {
       hasSavedScore.current = true;
       saveScoreToDb(nickname, finalScore);
     }
