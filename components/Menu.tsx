@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { getGlobalLeaderboard, GlobalScore } from '../services/supabaseService';
+import { getGlobalLeaderboard, GlobalScore, saveScoreToDb } from '../services/supabaseService';
+import { INITIAL_PLAYER_RADIUS } from '../constants';
 
 interface MenuProps {
   onStart: (nickname: string) => void;
@@ -30,6 +31,13 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const name = nickname.trim() || 'Guest';
+    
+    // Save to DB immediately upon entry (User Request)
+    if (isDbConnected) {
+      // Saving with initial mass (usually 20) to register the player
+      saveScoreToDb(name, INITIAL_PLAYER_RADIUS);
+    }
+
     onStart(name);
   };
 
