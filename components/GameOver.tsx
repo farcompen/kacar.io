@@ -19,11 +19,14 @@ const GameOver: React.FC<GameOverProps> = ({ score, nickname, killerName, startT
     let isMounted = true;
     const timeAlive = Math.floor((Date.now() - startTime) / 1000);
     const finalScore = Math.floor(score);
+    
+    // Safety: Ensure at least minimum score is recorded if logic failed somehow
+    const effectiveScore = Math.max(finalScore, 20);
 
     // Save Score to DB (Only once)
-    if (!hasSavedScore.current && finalScore > 0) {
+    if (!hasSavedScore.current && effectiveScore > 0) {
       hasSavedScore.current = true;
-      saveScoreToDb(nickname, finalScore);
+      saveScoreToDb(nickname, effectiveScore);
     }
 
     const fetchCommentary = async () => {

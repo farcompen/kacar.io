@@ -25,17 +25,22 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
   // Game state Refs
-  // Player is now an array of blobs to support splitting
   const playerRef = useRef<BlobEntity[]>([]);
-  
   const botsRef = useRef<BlobEntity[]>([]);
   const foodsRef = useRef<FoodEntity[]>([]);
   const mouseRef = useRef({ x: 0, y: 0 });
   const frameIdRef = useRef<number>(0);
   const lastLeaderboardUpdateRef = useRef<number>(0);
 
+  // Fix: Keep track of the last valid score to prevent it from dropping to 0 on death frame
+  const lastMaxScoreRef = useRef<number>(INITIAL_PLAYER_RADIUS);
+  const isGameOverRef = useRef<boolean>(false);
+
   // Initialize game entities
   useEffect(() => {
+    isGameOverRef.current = false;
+    lastMaxScoreRef.current = INITIAL_PLAYER_RADIUS;
+
     // Reset player with a single blob
     playerRef.current = [{
       id: 'player-init',
@@ -101,6 +106,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
   }, []);
 
   const splitPlayer = () => {
+    if (isGameOverRef.current) return;
+
     const currentBlobs = playerRef.current;
     if (currentBlobs.length >= 16) return; // Cap max cells
 
@@ -155,7 +162,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
     resizeCanvas();
 
     const update = () => {
-      if (playerRef.current.length === 0) return;
+      if (isGameOverRef.current) return;
+      if (playerRef.current.length === 0 && !isGameOverRef.current) {
+        // Fail-safe if player array is empty but game over wasn't triggered
+        return;
+      }
 
       // --- 1. Update Player Blobs ---
       playerRef.current.forEach(player => {
@@ -196,7 +207,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
       });
 
       // --- 2. Resolve Player-Player Collisions (Repulsion) ---
-      // Prevent cells from stacking perfectly on top of each other
       for (let i = 0; i < playerRef.current.length; i++) {
         for (let j = i + 1; j < playerRef.current.length; j++) {
           const b1 = playerRef.current[i];
@@ -206,14 +216,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
           const dist = Math.hypot(dx, dy);
           const minDist = b1.radius + b2.radius;
 
-          // If overlapping (and not currently merging - merging logic omitted for simplicity of this step)
           if (dist < minDist && dist > 0) {
              const overlap = minDist - dist;
              const nx = dx / dist;
              const ny = dy / dist;
              
-             // Push apart gently
-             const force = overlap * 0.05; // Soft body physics
+             const force = overlap * 0.05; 
              
              b1.x += nx * force;
              b1.y += ny * force;
@@ -245,15 +253,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         bot.y = Math.max(bot.radius, Math.min(WORLD_HEIGHT - bot.radius, bot.y));
       });
 
-      // --- 4. Collision Detection (Eating) ---
-      
       const getArea = (r: number) => Math.PI * r * r;
       const getRadius = (area: number) => Math.sqrt(area / Math.PI);
 
+      // --- 4. Collision Detection (Eating) ---
+      
       // Player(s) vs Food
       foodsRef.current = foodsRef.current.filter(food => {
         let eaten = false;
-        // Check against all player blobs
         for (const playerBlob of playerRef.current) {
           const dist = Math.hypot(playerBlob.x - food.x, playerBlob.y - food.y);
           if (dist < playerBlob.radius) {
@@ -277,11 +284,15 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         });
       }
 
+      // --- CRITICAL: Score Calculation (Before Death Logic) ---
+      // We calculate score HERE, before the player might get eaten.
+      const currentTotalScore = playerRef.current.reduce((acc, p) => acc + Math.floor(p.radius), 0);
+      if (currentTotalScore > 0) {
+          lastMaxScoreRef.current = currentTotalScore;
+          setScore(currentTotalScore);
+      }
+
       // Bots vs Player Blobs Interaction
-      // We need to handle:
-      // 1. Player eats Bot
-      // 2. Bot eats Player
-      
       const remainingBots: BlobEntity[] = [];
       let playerWasEaten = false;
       let killer = '';
@@ -289,11 +300,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
       botsRef.current.forEach(bot => {
         let botEaten = false;
         
-        // Check against all player blobs
-        // Using a for loop to allow modification of playerRef inside if needed (though we filter later)
-        // Actually safer to just mark things for deletion
-        
-        // Check if Bot eats any Player Blob
         for (const playerBlob of playerRef.current) {
             if (botEaten) break;
 
@@ -308,7 +314,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
                     botEaten = true;
                 } else if (bot.radius > playerBlob.radius * 1.1) {
                     // Bot eats Player Blob
-                    // Mark player blob as dead (set radius to 0 or filter out later)
                     const newArea = getArea(bot.radius) + getArea(playerBlob.radius);
                     bot.radius = getRadius(newArea);
                     playerBlob.radius = 0; // Mark for removal
@@ -328,15 +333,20 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
       // Remove dead player blobs
       if (playerWasEaten) {
           playerRef.current = playerRef.current.filter(p => p.radius > 0);
+          
+          // If all player blobs are gone
           if (playerRef.current.length === 0) {
+              isGameOverRef.current = true;
               setKillerName(killer);
+              // Use the last known valid score (because current array is empty and score would be 0)
+              setScore(lastMaxScoreRef.current);
               setGameState(GameState.GAME_OVER);
+              return; // Stop the update loop immediately
           }
       }
 
       // Replenish Bots
        while (botsRef.current.length < MAX_BOTS) {
-         // Base spawn size on average player size so it stays challenging/fair
          const avgPlayerRadius = playerRef.current.length > 0 
             ? playerRef.current.reduce((sum, p) => sum + p.radius, 0) / playerRef.current.length 
             : INITIAL_PLAYER_RADIUS;
@@ -353,18 +363,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
          });
        }
 
-      // Update Score (Total Mass)
-      const totalScore = playerRef.current.reduce((acc, p) => acc + Math.floor(p.radius), 0);
-      setScore(totalScore);
-
       // Update Leaderboard
       if (Date.now() - lastLeaderboardUpdateRef.current > 1000) {
-        // For leaderboard, if player has multiple cells, we can treat them as one aggregate score
-        // or just show the largest cell. Usually games show the aggregate.
         const playerEntry = {
             id: 'player',
             name: nickname,
-            score: totalScore
+            score: currentTotalScore // Use the locally calculated score
         };
 
         const botEntries = botsRef.current.map(b => ({
@@ -374,7 +378,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         }));
 
         const allEntities = [...botEntries];
-        if (playerRef.current.length > 0) {
+        if (!isGameOverRef.current && playerRef.current.length > 0) {
             allEntities.push(playerEntry);
         }
 
@@ -385,57 +389,56 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
     };
 
     const draw = () => {
-      if (playerRef.current.length === 0) return;
+      // Don't draw if game over (or handle it gracefully)
+      if (playerRef.current.length === 0 && !isGameOverRef.current) return;
 
       // Clear background
       ctx.fillStyle = '#1a1a1a';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Camera Logic
-      // Find centroid of all player blobs
       let centroidX = 0;
       let centroidY = 0;
       let totalMass = 0;
 
-      playerRef.current.forEach(p => {
-          centroidX += p.x * p.radius; // Weighted by size
-          centroidY += p.y * p.radius;
-          totalMass += p.radius;
-      });
-
-      if (totalMass > 0) {
-          centroidX /= totalMass;
-          centroidY /= totalMass;
+      // If player is dead, maybe stick camera to last position or center?
+      // For now, assume player alive or use last position
+      if (playerRef.current.length > 0) {
+          playerRef.current.forEach(p => {
+              centroidX += p.x * p.radius; 
+              centroidY += p.y * p.radius;
+              totalMass += p.radius;
+          });
+          if (totalMass > 0) {
+              centroidX /= totalMass;
+              centroidY /= totalMass;
+          }
       } else {
-          // Fallback
-          centroidX = playerRef.current[0].x;
-          centroidY = playerRef.current[0].y;
+          // Fallback to mouse or center
+          centroidX = WORLD_WIDTH / 2;
+          centroidY = WORLD_HEIGHT / 2;
       }
 
       // Calculate required zoom to fit all blobs
-      // Find bounds relative to centroid
       let maxDistX = 0;
       let maxDistY = 0;
       
       playerRef.current.forEach(p => {
-          const dx = Math.abs(p.x - centroidX) + p.radius * 2; // Add padding
+          const dx = Math.abs(p.x - centroidX) + p.radius * 2; 
           const dy = Math.abs(p.y - centroidY) + p.radius * 2;
           if (dx > maxDistX) maxDistX = dx;
           if (dy > maxDistY) maxDistY = dy;
       });
 
-      // Base zoom on the spread of cells + total size
-      // Ensure minimum zoom level based on total mass as well
       const spreadZoom = Math.min(
           canvas.width / (maxDistX * 2.5 || 1), 
           canvas.height / (maxDistY * 2.5 || 1)
       );
       
-      const sizeZoom = 1 / (Math.pow(totalMass / playerRef.current.length, 0.4) / 3);
+      const sizeZoom = 1 / (Math.pow(totalMass / (playerRef.current.length || 1), 0.4) / 3);
       
-      // Use the smaller zoom (either to fit spread or based on size)
       let zoom = Math.min(spreadZoom, sizeZoom);
-      zoom = Math.max(0.1, Math.min(2, zoom)); // Clamp zoom
+      zoom = Math.max(0.1, Math.min(2, zoom));
 
       ctx.save();
       ctx.translate(canvas.width / 2, canvas.height / 2);
@@ -469,7 +472,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         ctx.fill();
       });
 
-      // Draw All Blobs (Player + Bots) sorted by size
+      // Draw All Blobs
       const allBlobs = [...botsRef.current, ...playerRef.current].sort((a, b) => a.radius - b.radius);
 
       allBlobs.forEach(blob => {
@@ -478,12 +481,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         ctx.arc(blob.x, blob.y, blob.radius, 0, Math.PI * 2);
         ctx.fill();
         
-        // Stroke
         ctx.strokeStyle = blob.isPlayer ? '#fff' : 'rgba(0,0,0,0.2)';
         ctx.lineWidth = blob.isPlayer ? 4 : 3;
         ctx.stroke();
 
-        // Name
         ctx.fillStyle = '#FFF';
         ctx.font = `bold ${Math.max(12, blob.radius * 0.4)}px Arial`;
         ctx.textAlign = 'center';
@@ -497,7 +498,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
     const renderLoop = () => {
       update();
       draw();
-      frameIdRef.current = requestAnimationFrame(renderLoop);
+      if (!isGameOverRef.current) {
+         frameIdRef.current = requestAnimationFrame(renderLoop);
+      }
     };
 
     renderLoop();
