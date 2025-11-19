@@ -9,15 +9,23 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
   const [nickname, setNickname] = useState('');
   const [topScores, setTopScores] = useState<GlobalScore[]>([]);
   const [loadingScores, setLoadingScores] = useState(true);
+  
+  // Check if connected (simple check based on env vars availability)
+  const isDbConnected = !!process.env.SUPABASE_URL;
 
   useEffect(() => {
+    if (!isDbConnected) {
+      setLoadingScores(false);
+      return;
+    }
+
     const fetchScores = async () => {
       const scores = await getGlobalLeaderboard(5);
       setTopScores(scores);
       setLoadingScores(false);
     };
     fetchScores();
-  }, []);
+  }, [isDbConnected]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,7 +79,13 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
              <span>🏆</span> Hall of Fame
           </h3>
           
-          {loadingScores ? (
+          {!isDbConnected ? (
+             <div className="text-red-400 text-xs text-center py-4 border border-red-900 bg-red-900/20 rounded p-2">
+               <strong>Connection Failed</strong><br/>
+               Database keys not found.<br/>
+               Please configure Vercel Env Vars and Redeploy.
+             </div>
+          ) : loadingScores ? (
              <div className="text-gray-500 text-sm text-center py-4">Loading records...</div>
           ) : topScores.length > 0 ? (
             <ul className="space-y-3">
