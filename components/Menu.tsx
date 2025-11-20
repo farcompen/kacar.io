@@ -120,6 +120,12 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
         </div>
 
       </div>
+      {/* footer */}
+       <div className="absolute bottom-8 left-0 w-full text-center z-0">
+        <p className="text-gray-500 text-sm font-medium tracking-wide">
+          Created by <span className="text-gray-300 font-bold">Faruk GÜNGÖR</span>
+        </p>
+      </div>
     </div>
   );
 };
