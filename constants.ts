@@ -4,7 +4,7 @@ export const WORLD_HEIGHT = 9000;
 
 export const INITIAL_PLAYER_RADIUS = 20;
 export const FOOD_RADIUS = 5;
-export const MAX_BOTS = 60;
+export const MAX_BOTS = 70;
 export const MAX_FOOD = 1200;
 
 export const MIN_SPLIT_RADIUS = 40; // Minimum size required to split
@@ -32,5 +32,5 @@ export const BOT_NAMES = [
   "Titan", "Hyperion", "Chronos", "Helios", "Atlas",
   "Void", "Abyss", "Horizon", "Singularity", "Matter",
   "Proton", "Neutron", "Electron", "Quantum", "Nano",
-  "Alpha", "Omega", "Delta", "Sigma", "Zeta"
+  "Alpha", "Omega", "Delta", "Sigma", "Zeta","John","Alex","ibrahim","Ahmet","Sevil","Hülya","Kalender","Sinem","Filiz","handsome","badboy"
 ];
