@@ -246,16 +246,15 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
 
           if (canMerge) {
             // ATTRACTION logic (Pull them together to merge)
-            if (dist < minDist + 50) { 
-                 const force = 0.03; // Moderate pull
-                 b1.x -= (dx / dist) * force * 2;
-                 b1.y -= (dy / dist) * force * 2;
-                 b2.x += (dx / dist) * force * 2;
-                 b2.y += (dy / dist) * force * 2;
-            }
+            // Use spring force (proportional to distance) to make sure they get close enough
+            const pullFactor = 0.03; // Strong pull
+            b1.x -= dx * pullFactor;
+            b1.y -= dy * pullFactor;
+            b2.x += dx * pullFactor;
+            b2.y += dy * pullFactor;
 
             // MERGE logic (Actual combination)
-            // Need significant overlap to merge
+            // Need significant overlap to merge (60% of combined radius)
             if (dist < (b1.radius + b2.radius) * 0.6) {
                 const newArea = getArea(b1.radius) + getArea(b2.radius);
                 const newRadius = getRadius(newArea);
@@ -269,29 +268,28 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
             }
           } else if (canGroup) {
             // PHASE 2: Grouping (5s - 10s)
-            // Logic: 
-            // 1. If touching (dist < minDist): Push apart gently (act solid).
-            // 2. If NOT touching but close (dist < minDist * 2): Pull together (Cluster effect).
+            // GOAL: Magnetically snap together until touching, then act solid.
             
             if (dist < minDist) {
-                // Touch Physics: Push apart so they don't overlap visually
+                // TOUCHING: Act solid (Push apart gently to prevent overlap)
                 const overlap = minDist - dist;
                 const nx = dx / dist;
                 const ny = dy / dist;
                 
-                // Gentle correction
-                const force = overlap * 0.05; 
+                const force = overlap * 0.2; // Firm collision response
                 b1.x += nx * force;
                 b1.y += ny * force;
                 b2.x -= nx * force;
                 b2.y -= ny * force;
-            } else if (dist < minDist * 2.0) {
-                // Magnetic Grouping: Pull them side-by-side if they are drifting away
-                const pullForce = 0.01; // Gentle attraction
-                b1.x -= (dx / dist) * pullForce;
-                b1.y -= (dy / dist) * pullForce;
-                b2.x += (dx / dist) * pullForce;
-                b2.y += (dy / dist) * pullForce;
+            } else {
+                // APART: Strong Magnetic Pull
+                // Use a percentage of the distance to snap them back quickly
+                const pullFactor = 0.02; // Closes 2% of the gap per frame (very effective)
+                
+                b1.x -= dx * pullFactor;
+                b1.y -= dy * pullFactor;
+                b2.x += dx * pullFactor;
+                b2.y += dy * pullFactor;
             }
           } else {
             // PHASE 1: Repulsion (< 5 seconds)
