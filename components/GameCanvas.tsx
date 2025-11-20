@@ -9,6 +9,7 @@ import {
   MAX_BOTS, 
   MIN_SPLIT_RADIUS,
   SPLIT_FORCE,
+  COLLISION_COOLDOWN,
   MERGE_COOLDOWN,
   getRandomColor, 
   BOT_NAMES 
@@ -216,7 +217,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         player.y = Math.max(player.radius, Math.min(WORLD_HEIGHT - player.radius, player.y));
       });
 
-      // --- 2. Resolve Player-Player Collisions (Repulsion OR Merge) ---
+      // --- 2. Resolve Player-Player Collisions (Repulsion, Touch, or Merge) ---
       const blobsToRemove = new Set<string>();
       const now = Date.now();
 
@@ -229,25 +230,30 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
 
           const dx = b1.x - b2.x;
           const dy = b1.y - b2.y;
-          const dist = Math.hypot(dx, dy);
+          let dist = Math.hypot(dx, dy);
+          if (dist === 0) dist = 0.01; // Prevent divide by zero
+
           const minDist = b1.radius + b2.radius;
 
-          // Check if they can merge (both must be old enough)
           const age1 = now - (b1.createdAt || 0);
           const age2 = now - (b2.createdAt || 0);
+          
+          // PHASE 3: Merge (> 10 seconds)
           const canMerge = age1 > MERGE_COOLDOWN && age2 > MERGE_COOLDOWN;
+          // PHASE 2: Touch/Contact (> 5 seconds)
+          const canTouch = age1 > COLLISION_COOLDOWN && age2 > COLLISION_COOLDOWN;
 
           if (canMerge) {
-            // ATTRACTION logic
+            // ATTRACTION logic (Pull them together to aid merging)
             if (dist < minDist + 50) { 
                  const force = 0.02;
-                 b1.x -= dx * force;
-                 b1.y -= dy * force;
-                 b2.x += dx * force;
-                 b2.y += dy * force;
+                 b1.x -= (dx / dist) * force * 2;
+                 b1.y -= (dy / dist) * force * 2;
+                 b2.x += (dx / dist) * force * 2;
+                 b2.y += (dy / dist) * force * 2;
             }
 
-            // MERGE logic (Overlap > 60%)
+            // MERGE logic (Actual combination)
             if (dist < (b1.radius + b2.radius) * 0.6) {
                 const newArea = getArea(b1.radius) + getArea(b2.radius);
                 const newRadius = getRadius(newArea);
@@ -258,14 +264,29 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
                 
                 blobsToRemove.add(b2.id);
             }
-
-          } else {
-            // REPULSION logic
-            if (dist < minDist && dist > 0) {
+          } else if (canTouch) {
+            // PHASE 2: Touching (5s - 10s)
+            // Cells act like solid objects (Soft Collision). They rub against each other but don't merge.
+            if (dist < minDist) {
                 const overlap = minDist - dist;
                 const nx = dx / dist;
                 const ny = dy / dist;
+                // Gentle correction to push them out of overlap
                 const force = overlap * 0.05; 
+                b1.x += nx * force;
+                b1.y += ny * force;
+                b2.x -= nx * force;
+                b2.y -= ny * force;
+            }
+          } else {
+            // PHASE 1: Repulsion (< 5 seconds)
+            // Cells push away strongly. Helps the split "pop" effect.
+            if (dist < minDist) {
+                const overlap = minDist - dist;
+                const nx = dx / dist;
+                const ny = dy / dist;
+                // Strong force
+                const force = overlap * 0.2; 
                 b1.x += nx * force;
                 b1.y += ny * force;
                 b2.x -= nx * force;
