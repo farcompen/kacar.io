@@ -11,6 +11,7 @@ import {
   SPLIT_FORCE,
   COLLISION_COOLDOWN,
   MERGE_COOLDOWN,
+  MASS_SCALE,
   getRandomColor, 
   BOT_NAMES 
 } from '../constants';
@@ -35,17 +36,23 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
   const lastLeaderboardUpdateRef = useRef<number>(0);
 
   // Fix: Keep track of the last valid score to prevent it from dropping to 0 on death frame
-  const lastMaxScoreRef = useRef<number>(INITIAL_PLAYER_RADIUS);
+  const lastMaxScoreRef = useRef<number>(0);
   const isGameOverRef = useRef<boolean>(false);
 
-  // Helper Math functions
-  const getArea = (r: number) => Math.PI * r * r;
-  const getRadius = (area: number) => Math.sqrt(area / Math.PI);
+  // --- Math Helpers for Mass System ---
+  // Mass = (Radius / Scale)^2
+  // Radius = sqrt(Mass) * Scale
+  // Food = 1 Mass
+  const getMass = (r: number) => Math.pow(r / MASS_SCALE, 2);
+  const getRadiusFromMass = (m: number) => Math.sqrt(m) * MASS_SCALE;
 
   // Initialize game entities
   useEffect(() => {
     isGameOverRef.current = false;
-    lastMaxScoreRef.current = INITIAL_PLAYER_RADIUS;
+    
+    // Initial score is based on initial radius
+    const startMass = getMass(INITIAL_PLAYER_RADIUS);
+    lastMaxScoreRef.current = startMass;
 
     // Reset player with a single blob
     playerRef.current = [{
@@ -83,7 +90,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
       color: getRandomColor(),
     }));
 
-    setScore(INITIAL_PLAYER_RADIUS);
+    setScore(startMass);
   }, [nickname, setScore]);
 
   // Mouse handler
@@ -125,15 +132,15 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
 
     currentBlobs.forEach(blob => {
       if (blob.radius >= MIN_SPLIT_RADIUS) {
-         // Calculate new size
-         const newArea = (Math.PI * blob.radius * blob.radius) / 2;
-         const newRadius = Math.sqrt(newArea / Math.PI);
+         // Calculate Mass Split (Conservation of Mass)
+         const totalMass = getMass(blob.radius);
+         const halfMass = totalMass / 2;
+         const newRadius = getRadiusFromMass(halfMass);
          
          // Direction for the split (towards mouse)
          const angle = Math.atan2(mouseRef.current.y, mouseRef.current.x);
          
          // Update original blob (stays roughly where it is)
-         // IMPORTANT: Reset createdAt so it waits another 10s to merge
          updatedBlobs.push({
            ...blob,
            radius: newRadius,
@@ -144,7 +151,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
          newBlobs.push({
            ...blob,
            id: `${blob.id}-${now}`,
-           x: blob.x + Math.cos(angle) * (blob.radius), // Start slightly ahead to avoid instant overlap
+           x: blob.x + Math.cos(angle) * (blob.radius), // Start slightly ahead
            y: blob.y + Math.sin(angle) * (blob.radius),
            radius: newRadius,
            boostX: Math.cos(angle) * SPLIT_FORCE,
@@ -245,47 +252,41 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
           const canGroup = age1 > COLLISION_COOLDOWN && age2 > COLLISION_COOLDOWN;
 
           if (canMerge) {
-            // ATTRACTION logic (Pull them together to merge)
-            // Use spring force (proportional to distance) to make sure they get close enough
-            const pullFactor = 0.03; // Strong pull
+            // ATTRACTION logic
+            const pullFactor = 0.03; 
             b1.x -= dx * pullFactor;
             b1.y -= dy * pullFactor;
             b2.x += dx * pullFactor;
             b2.y += dy * pullFactor;
 
-            // MERGE logic (Actual combination)
-            // Need significant overlap to merge (60% of combined radius)
+            // MERGE logic
             if (dist < (b1.radius + b2.radius) * 0.6) {
-                const newArea = getArea(b1.radius) + getArea(b2.radius);
-                const newRadius = getRadius(newArea);
+                // Add Mass
+                const m1 = getMass(b1.radius);
+                const m2 = getMass(b2.radius);
+                b1.radius = getRadiusFromMass(m1 + m2);
                 
-                // New position is weighted average
-                b1.x = (b1.x * b1.radius + b2.x * b2.radius) / (b1.radius + b2.radius);
-                b1.y = (b1.y * b1.radius + b2.y * b2.radius) / (b1.radius + b2.radius);
-                b1.radius = newRadius;
+                // New position weighted
+                b1.x = (b1.x * m1 + b2.x * m2) / (m1 + m2);
+                b1.y = (b1.y * m1 + b2.y * m2) / (m1 + m2);
                 
                 blobsToRemove.add(b2.id);
             }
           } else if (canGroup) {
             // PHASE 2: Grouping (5s - 10s)
-            // GOAL: Magnetically snap together until touching, then act solid.
-            
             if (dist < minDist) {
-                // TOUCHING: Act solid (Push apart gently to prevent overlap)
+                // TOUCHING: Act solid
                 const overlap = minDist - dist;
                 const nx = dx / dist;
                 const ny = dy / dist;
-                
-                const force = overlap * 0.2; // Firm collision response
+                const force = overlap * 0.2;
                 b1.x += nx * force;
                 b1.y += ny * force;
                 b2.x -= nx * force;
                 b2.y -= ny * force;
             } else {
-                // APART: Strong Magnetic Pull
-                // Use a percentage of the distance to snap them back quickly
-                const pullFactor = 0.02; // Closes 2% of the gap per frame (very effective)
-                
+                // APART: Magnetic Pull
+                const pullFactor = 0.02; 
                 b1.x -= dx * pullFactor;
                 b1.y -= dy * pullFactor;
                 b2.x += dx * pullFactor;
@@ -293,12 +294,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
             }
           } else {
             // PHASE 1: Repulsion (< 5 seconds)
-            // Cells push away strongly. Helps the split "pop" effect.
             if (dist < minDist) {
                 const overlap = minDist - dist;
                 const nx = dx / dist;
                 const ny = dy / dist;
-                // Strong force to separate them
                 const force = overlap * 0.15; 
                 b1.x += nx * force;
                 b1.y += ny * force;
@@ -313,90 +312,73 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         playerRef.current = playerRef.current.filter(b => !blobsToRemove.has(b.id));
       }
 
-      // --- 3. Update Bots (Improved Physics & Interaction) ---
-      
-      // 3.1 Bot Movement & Physics
+      // --- 3. Update Bots ---
       botsRef.current.forEach(bot => {
-        // Bigger bots change direction less frequently (more inertia)
         const directionChangeChance = Math.max(0.005, 0.03 - (bot.radius / 5000)); 
-        
         if (Math.random() < directionChangeChance) {
           bot.dx = (Math.random() - 0.5) * 4;
           bot.dy = (Math.random() - 0.5) * 4;
         }
 
-        // Border bounce
         if (bot.x - bot.radius < 0 || bot.x + bot.radius > WORLD_WIDTH) bot.dx = - (bot.dx || 1);
         if (bot.y - bot.radius < 0 || bot.y + bot.radius > WORLD_HEIGHT) bot.dy = - (bot.dy || 1);
         
-        // Speed Calculation: Ensure minimum speed so big bots don't stop
-        // Formula: Starts high for small bots, decays but capped at 1.0 minimum
         const botSpeed = Math.max(1.0, (250 / bot.radius) + 0.5); 
-        
         const mag = Math.hypot(bot.dx || 0, bot.dy || 0);
         const vx = (bot.dx || 0) / (mag || 1) * botSpeed;
         const vy = (bot.dy || 0) / (mag || 1) * botSpeed;
 
         bot.x += vx;
         bot.y += vy;
-
         bot.x = Math.max(bot.radius, Math.min(WORLD_WIDTH - bot.radius, bot.x));
         bot.y = Math.max(bot.radius, Math.min(WORLD_HEIGHT - bot.radius, bot.y));
       });
 
-      // 3.2 Bot vs Bot Collision (Cannibalism)
-      // We sort by radius desc to handle largest eating first in this frame
+      // Bot Cannibalism
       botsRef.current.sort((a, b) => b.radius - a.radius);
       const eatenBotIds = new Set<string>();
 
       for (let i = 0; i < botsRef.current.length; i++) {
         const hunter = botsRef.current[i];
         if (eatenBotIds.has(hunter.id)) continue;
-
         for (let j = i + 1; j < botsRef.current.length; j++) {
           const prey = botsRef.current[j];
           if (eatenBotIds.has(prey.id)) continue;
-
           const dist = Math.hypot(hunter.x - prey.x, hunter.y - prey.y);
-          
-          // Collision Check
-          if (dist < hunter.radius) {
-             // Eating Rule: Hunter must be at least 10% larger
-             if (hunter.radius > prey.radius * 1.1) {
-                const newArea = getArea(hunter.radius) + getArea(prey.radius);
-                hunter.radius = getRadius(newArea);
-                eatenBotIds.add(prey.id);
-             }
+          if (dist < hunter.radius && hunter.radius > prey.radius * 1.1) {
+             // Hunter Eats Prey (Mass Logic)
+             const hunterMass = getMass(hunter.radius);
+             const preyMass = getMass(prey.radius);
+             hunter.radius = getRadiusFromMass(hunterMass + preyMass);
+             eatenBotIds.add(prey.id);
           }
         }
       }
-
-      // Remove bots eaten by other bots
       if (eatenBotIds.size > 0) {
         botsRef.current = botsRef.current.filter(b => !eatenBotIds.has(b.id));
       }
 
-      // --- 4. Collision Detection (Eating Food) ---
-      
-      // Player(s) vs Food
+      // --- 4. Eating Food ---
+      // Each Food = +1 Mass
+      const FOOD_MASS_GAIN = 1;
+
       foodsRef.current = foodsRef.current.filter(food => {
         let eaten = false;
         for (const playerBlob of playerRef.current) {
           const dist = Math.hypot(playerBlob.x - food.x, playerBlob.y - food.y);
           if (dist < playerBlob.radius) {
-            const newArea = getArea(playerBlob.radius) + getArea(food.radius);
-            playerBlob.radius = getRadius(newArea);
+            const currentMass = getMass(playerBlob.radius);
+            playerBlob.radius = getRadiusFromMass(currentMass + FOOD_MASS_GAIN);
             eaten = true;
             break; 
           }
         }
-        // Bots vs Food (Basic optimization: only check if near)
         if (!eaten) {
            for (const bot of botsRef.current) {
              const dist = Math.hypot(bot.x - food.x, bot.y - food.y);
              if (dist < bot.radius) {
-                const newArea = getArea(bot.radius) + getArea(food.radius);
-                bot.radius = getRadius(newArea);
+                const currentMass = getMass(bot.radius);
+                bot.radius = getRadiusFromMass(currentMass + FOOD_MASS_GAIN);
                 eaten = true;
                 break;
              }
@@ -416,11 +398,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         });
       }
 
-      // --- CRITICAL: Score Calculation (Before Death Logic) ---
-      const currentTotalScore = playerRef.current.reduce((acc, p) => acc + Math.floor(p.radius), 0);
-      if (currentTotalScore > 0) {
-          lastMaxScoreRef.current = currentTotalScore;
-          setScore(currentTotalScore);
+      // --- SCORE CALCULATION (Mass Based) ---
+      const currentTotalMass = Math.floor(playerRef.current.reduce((acc, p) => acc + getMass(p.radius), 0));
+      if (currentTotalMass > 0) {
+          lastMaxScoreRef.current = currentTotalMass;
+          setScore(currentTotalMass);
       }
 
       // --- 5. Player vs Bot Interaction ---
@@ -430,30 +412,29 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
 
       botsRef.current.forEach(bot => {
         let botEaten = false;
-        
         for (const playerBlob of playerRef.current) {
             if (botEaten) break;
-
             const dist = Math.hypot(playerBlob.x - bot.x, playerBlob.y - bot.y);
             const overlap = dist < Math.max(playerBlob.radius, bot.radius);
 
             if (overlap) {
                 if (playerBlob.radius > bot.radius * 1.1) {
-                    // Player eats Bot
-                    const newArea = getArea(playerBlob.radius) + getArea(bot.radius);
-                    playerBlob.radius = getRadius(newArea);
+                    // Player eats Bot (Gain Bot Mass)
+                    const pMass = getMass(playerBlob.radius);
+                    const bMass = getMass(bot.radius);
+                    playerBlob.radius = getRadiusFromMass(pMass + bMass);
                     botEaten = true;
                 } else if (bot.radius > playerBlob.radius * 1.1) {
                     // Bot eats Player Blob
-                    const newArea = getArea(bot.radius) + getArea(playerBlob.radius);
-                    bot.radius = getRadius(newArea);
-                    playerBlob.radius = 0; // Mark for removal
+                    const bMass = getMass(bot.radius);
+                    const pMass = getMass(playerBlob.radius);
+                    bot.radius = getRadiusFromMass(bMass + pMass);
+                    playerBlob.radius = 0;
                     playerWasEaten = true;
                     killer = bot.name || 'Unknown';
                 }
             }
         }
-
         if (!botEaten) {
             remainingBots.push(bot);
         }
@@ -461,11 +442,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
       
       botsRef.current = remainingBots;
       
-      // Remove dead player blobs
       if (playerWasEaten) {
           playerRef.current = playerRef.current.filter(p => p.radius > 0);
-          
-          // If all player blobs are gone
           if (playerRef.current.length === 0) {
               isGameOverRef.current = true;
               setKillerName(killer);
@@ -477,22 +455,15 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
 
       // Replenish Bots
        while (botsRef.current.length < MAX_BOTS) {
-         // Logic: Calculate avg player radius
          const avgPlayerRadius = playerRef.current.length > 0 
             ? playerRef.current.reduce((sum, p) => sum + p.radius, 0) / playerRef.current.length 
             : INITIAL_PLAYER_RADIUS;
 
-         // 25% Chance to spawn a "Rival" bot (scales with player size)
-         // 75% Chance to spawn a "Feeder" bot (small)
          const isRivalBot = Math.random() < 0.25;
-         
          let spawnRadius = 15;
          if (isRivalBot) {
-             // Scale with player, but keep it random (0.5x to 1.5x of player size)
-             // Capped at 3x player size to prevent impossible spawns, min 20
              spawnRadius = Math.max(20, Math.random() * avgPlayerRadius * 1.5);
          } else {
-             // Standard small bot (15-45 radius)
              spawnRadius = Math.floor(Math.random() * 30) + 15;
          }
 
@@ -513,13 +484,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         const playerEntry = {
             id: 'player',
             name: nickname,
-            score: currentTotalScore 
+            score: currentTotalMass 
         };
 
         const botEntries = botsRef.current.map(b => ({
             id: b.id,
             name: b.name || 'Cell',
-            score: Math.floor(b.radius)
+            score: Math.floor(getMass(b.radius))
         }));
 
         const allEntities = [...botEntries];
@@ -543,27 +514,26 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
       // Camera Logic
       let centroidX = 0;
       let centroidY = 0;
-      let totalMass = 0;
+      let totalRadius = 0; // Use radius for camera weighting, not mass (smoother)
 
       if (playerRef.current.length > 0) {
           playerRef.current.forEach(p => {
               centroidX += p.x * p.radius; 
               centroidY += p.y * p.radius;
-              totalMass += p.radius;
+              totalRadius += p.radius;
           });
-          if (totalMass > 0) {
-              centroidX /= totalMass;
-              centroidY /= totalMass;
+          if (totalRadius > 0) {
+              centroidX /= totalRadius;
+              centroidY /= totalRadius;
           }
       } else {
           centroidX = WORLD_WIDTH / 2;
           centroidY = WORLD_HEIGHT / 2;
       }
 
-      // Calculate required zoom to fit all blobs
+      // Calculate zoom
       let maxDistX = 0;
       let maxDistY = 0;
-      
       playerRef.current.forEach(p => {
           const dx = Math.abs(p.x - centroidX) + p.radius * 2; 
           const dy = Math.abs(p.y - centroidY) + p.radius * 2;
@@ -576,7 +546,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
           canvas.height / (maxDistY * 2.5 || 1)
       );
       
-      const sizeZoom = 1 / (Math.pow(totalMass / (playerRef.current.length || 1), 0.4) / 3);
+      // Approximate total area for zoom calc
+      const totalArea = playerRef.current.reduce((acc, p) => acc + (p.radius * p.radius), 0);
+      const effectiveRadius = Math.sqrt(totalArea);
+      const sizeZoom = 1 / (Math.pow(effectiveRadius, 0.4) / 3);
       
       let zoom = Math.min(spreadZoom, sizeZoom);
       zoom = Math.max(0.1, Math.min(2, zoom));
