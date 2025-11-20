@@ -48,7 +48,7 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
         {/* Login Form */}
         <div className="bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700 w-full max-w-md">
           <h1 className="text-5xl font-bold text-center mb-2 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
-            Kaçar.io
+            Kacar.io
           </h1>
           <p className="text-gray-400 text-center mb-8">Grow, Eat, Survive.</p>
           

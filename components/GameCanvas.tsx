@@ -288,8 +288,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
       // --- 3. Update Bots ---
       botsRef.current.forEach(bot => {
         if (Math.random() < 0.02) {
-          bot.dx = (Math.random() - 0.5) * 4;
-          bot.dy = (Math.random() - 0.5) * 4;
+          bot.dx = (Math.random() - 0.5) * 6;
+          bot.dy = (Math.random() - 0.5) * 6;
         }
 
         if (bot.x - bot.radius < 0 || bot.x + bot.radius > WORLD_WIDTH) bot.dx = - (bot.dx || 1);
