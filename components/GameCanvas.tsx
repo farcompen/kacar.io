@@ -61,11 +61,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
     }];
 
     // Generate bots
+    // Initial bots are mostly small to start fair
     botsRef.current = Array.from({ length: MAX_BOTS }).map((_, i) => ({
       id: `bot-${i}`,
       x: Math.random() * WORLD_WIDTH,
       y: Math.random() * WORLD_HEIGHT,
-      radius: Math.max(10, Math.random() * 50), // Random starting sizes
+      radius: Math.max(10, Math.random() * 40 + 10), // Random starting sizes (10-50)
       color: getRandomColor(),
       name: BOT_NAMES[i % BOT_NAMES.length],
       dx: (Math.random() - 0.5) * 2,
@@ -442,15 +443,30 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
 
       // Replenish Bots
        while (botsRef.current.length < MAX_BOTS) {
+         // Logic: Calculate avg player radius
          const avgPlayerRadius = playerRef.current.length > 0 
             ? playerRef.current.reduce((sum, p) => sum + p.radius, 0) / playerRef.current.length 
             : INITIAL_PLAYER_RADIUS;
+
+         // 25% Chance to spawn a "Rival" bot (scales with player size)
+         // 75% Chance to spawn a "Feeder" bot (small)
+         const isRivalBot = Math.random() < 0.25;
+         
+         let spawnRadius = 15;
+         if (isRivalBot) {
+             // Scale with player, but keep it random (0.5x to 1.5x of player size)
+             // Capped at 3x player size to prevent impossible spawns, min 20
+             spawnRadius = Math.max(20, Math.random() * avgPlayerRadius * 1.5);
+         } else {
+             // Standard small bot (15-45 radius)
+             spawnRadius = Math.floor(Math.random() * 30) + 15;
+         }
 
          botsRef.current.push({
             id: `bot-new-${Date.now()}-${Math.random()}`,
             x: Math.random() * WORLD_WIDTH,
             y: Math.random() * WORLD_HEIGHT,
-            radius: Math.max(10, Math.random() * (avgPlayerRadius * 1.5)), 
+            radius: spawnRadius,
             color: getRandomColor(),
             name: BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)],
             dx: (Math.random() - 0.5) * 2,
