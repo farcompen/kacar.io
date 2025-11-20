@@ -11,7 +11,7 @@ export const MASS_SCALE = 5; // Visual scaling factor: Radius = sqrt(Mass) * MAS
 export const COLLISION_COOLDOWN = 5000; // 5 seconds before cells can touch/rub
 export const MIN_SPLIT_RADIUS = 40; // Minimum size required to split
 export const SPLIT_FORCE = 25; // Velocity boost when splitting
-export const MERGE_COOLDOWN = 10000; // 10 seconds before cells can re-merge
+export const MERGE_COOLDOWN = 15000; // 10 seconds before cells can re-merge
 
 export const COLORS = [
   '#F87171', // Red
