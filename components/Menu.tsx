@@ -79,6 +79,9 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
           <div className="mt-6 text-xs text-center text-gray-500">
             Mouse to move • Space to split
           </div>
+          <div className="mt-2 text-xs text-center text-gray-400 font-medium opacity-70">
+            Created by Faruk GÜNGÖR
+          </div>
         </div>
 
         {/* Global Leaderboard */}
