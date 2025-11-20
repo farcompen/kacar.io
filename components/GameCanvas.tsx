@@ -253,7 +253,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
                 const newRadius = Math.sqrt(newArea / Math.PI);
                 
                 // Move center to weighted average
-                const totalArea = newArea; // approximation for mass
+            //    const totalArea = newArea; // approximation for mass
                 // Or just use radius as simple weight
                 b1.x = (b1.x * b1.radius + b2.x * b2.radius) / (b1.radius + b2.radius);
                 b1.y = (b1.y * b1.radius + b2.y * b2.radius) / (b1.radius + b2.radius);
