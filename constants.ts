@@ -2,7 +2,7 @@
 export const WORLD_WIDTH = 9000;
 export const WORLD_HEIGHT = 9000;
 
-export const INITIAL_PLAYER_RADIUS = 20;
+export const INITIAL_PLAYER_RADIUS = 30;
 export const FOOD_RADIUS = 5;
 export const MAX_BOTS = 70;
 export const MAX_FOOD = 1200;

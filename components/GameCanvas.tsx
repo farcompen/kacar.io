@@ -217,7 +217,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         player.y = Math.max(player.radius, Math.min(WORLD_HEIGHT - player.radius, player.y));
       });
 
-      // --- 2. Resolve Player-Player Collisions (Repulsion, Touch, or Merge) ---
+      // --- 2. Resolve Player-Player Collisions (Repulsion, Grouping, or Merge) ---
       const blobsToRemove = new Set<string>();
       const now = Date.now();
 
@@ -240,13 +240,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
           
           // PHASE 3: Merge (> 10 seconds)
           const canMerge = age1 > MERGE_COOLDOWN && age2 > MERGE_COOLDOWN;
-          // PHASE 2: Touch/Contact (> 5 seconds)
-          const canTouch = age1 > COLLISION_COOLDOWN && age2 > COLLISION_COOLDOWN;
+          
+          // PHASE 2: Grouping/Touching (> 5 seconds)
+          const canGroup = age1 > COLLISION_COOLDOWN && age2 > COLLISION_COOLDOWN;
 
           if (canMerge) {
-            // ATTRACTION logic (Pull them together to aid merging)
+            // ATTRACTION logic (Pull them together to merge)
             if (dist < minDist + 50) { 
-                 const force = 0.02;
+                 const force = 0.03; // Moderate pull
                  b1.x -= (dx / dist) * force * 2;
                  b1.y -= (dy / dist) * force * 2;
                  b2.x += (dx / dist) * force * 2;
@@ -254,29 +255,43 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
             }
 
             // MERGE logic (Actual combination)
+            // Need significant overlap to merge
             if (dist < (b1.radius + b2.radius) * 0.6) {
                 const newArea = getArea(b1.radius) + getArea(b2.radius);
                 const newRadius = getRadius(newArea);
                 
+                // New position is weighted average
                 b1.x = (b1.x * b1.radius + b2.x * b2.radius) / (b1.radius + b2.radius);
                 b1.y = (b1.y * b1.radius + b2.y * b2.radius) / (b1.radius + b2.radius);
                 b1.radius = newRadius;
                 
                 blobsToRemove.add(b2.id);
             }
-          } else if (canTouch) {
-            // PHASE 2: Touching (5s - 10s)
-            // Cells act like solid objects (Soft Collision). They rub against each other but don't merge.
+          } else if (canGroup) {
+            // PHASE 2: Grouping (5s - 10s)
+            // Logic: 
+            // 1. If touching (dist < minDist): Push apart gently (act solid).
+            // 2. If NOT touching but close (dist < minDist * 2): Pull together (Cluster effect).
+            
             if (dist < minDist) {
+                // Touch Physics: Push apart so they don't overlap visually
                 const overlap = minDist - dist;
                 const nx = dx / dist;
                 const ny = dy / dist;
-                // Gentle correction to push them out of overlap
+                
+                // Gentle correction
                 const force = overlap * 0.05; 
                 b1.x += nx * force;
                 b1.y += ny * force;
                 b2.x -= nx * force;
                 b2.y -= ny * force;
+            } else if (dist < minDist * 2.0) {
+                // Magnetic Grouping: Pull them side-by-side if they are drifting away
+                const pullForce = 0.01; // Gentle attraction
+                b1.x -= (dx / dist) * pullForce;
+                b1.y -= (dy / dist) * pullForce;
+                b2.x += (dx / dist) * pullForce;
+                b2.y += (dy / dist) * pullForce;
             }
           } else {
             // PHASE 1: Repulsion (< 5 seconds)
@@ -285,8 +300,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
                 const overlap = minDist - dist;
                 const nx = dx / dist;
                 const ny = dy / dist;
-                // Strong force
-                const force = overlap * 0.2; 
+                // Strong force to separate them
+                const force = overlap * 0.15; 
                 b1.x += nx * force;
                 b1.y += ny * force;
                 b2.x -= nx * force;
