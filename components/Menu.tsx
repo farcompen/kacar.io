@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { getGlobalLeaderboard, GlobalScore } from '../services/supabaseService';
-
+import { getGlobalLeaderboard, GlobalScore, saveScoreToDb } from '../services/supabaseService';
+import { INITIAL_PLAYER_RADIUS } from '../constants';
 
 interface MenuProps {
   onStart: (nickname: string) => void;
@@ -33,10 +33,10 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
     const name = nickname.trim() || 'Guest';
     
     // Save to DB immediately upon entry (User Request)
-    // if (isDbConnected) {
-    //   // Saving with initial mass (usually 20) to register the player
-    //   saveScoreToDb(name, INITIAL_PLAYER_RADIUS);
-    // }
+    if (isDbConnected) {
+      // Saving with initial mass (usually 20) to register the player
+      saveScoreToDb(name, INITIAL_PLAYER_RADIUS);
+    }
 
     onStart(name);
   };
@@ -48,7 +48,7 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
         {/* Login Form */}
         <div className="bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700 w-full max-w-md">
           <h1 className="text-5xl font-bold text-center mb-2 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
-            Kacar.io
+            Kaçar.io
           </h1>
           <p className="text-gray-400 text-center mb-8">Grow, Eat, Survive.</p>
           

@@ -1,6 +1,6 @@
 
-export const WORLD_WIDTH = 6000;
-export const WORLD_HEIGHT = 6000;
+export const WORLD_WIDTH = 9000;
+export const WORLD_HEIGHT = 9000;
 
 export const INITIAL_PLAYER_RADIUS = 20;
 export const FOOD_RADIUS = 5;
@@ -9,6 +9,7 @@ export const MAX_FOOD = 1200;
 
 export const MIN_SPLIT_RADIUS = 40; // Minimum size required to split
 export const SPLIT_FORCE = 25; // Velocity boost when splitting
+export const MERGE_COOLDOWN = 10000; // 10 seconds before cells can re-merge
 
 export const COLORS = [
   '#F87171', // Red

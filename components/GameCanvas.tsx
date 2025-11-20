@@ -9,6 +9,7 @@ import {
   MAX_BOTS, 
   MIN_SPLIT_RADIUS,
   SPLIT_FORCE,
+  MERGE_COOLDOWN,
   getRandomColor, 
   BOT_NAMES 
 } from '../constants';
@@ -51,7 +52,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
       name: nickname,
       isPlayer: true,
       boostX: 0,
-      boostY: 0
+      boostY: 0,
+      createdAt: Date.now() // Track creation time for merge logic
     }];
 
     // Generate bots
@@ -113,6 +115,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
 
     const newBlobs: BlobEntity[] = [];
     const updatedBlobs: BlobEntity[] = [];
+    const now = Date.now();
 
     currentBlobs.forEach(blob => {
       if (blob.radius >= MIN_SPLIT_RADIUS) {
@@ -124,20 +127,23 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
          const angle = Math.atan2(mouseRef.current.y, mouseRef.current.x);
          
          // Update original blob (stays roughly where it is)
+         // IMPORTANT: Reset createdAt so it waits another 10s to merge
          updatedBlobs.push({
            ...blob,
-           radius: newRadius
+           radius: newRadius,
+           createdAt: now
          });
 
          // Create projectile blob
          newBlobs.push({
            ...blob,
-           id: `${blob.id}-${Date.now()}`,
+           id: `${blob.id}-${now}`,
            x: blob.x + Math.cos(angle) * (blob.radius), // Start slightly ahead to avoid instant overlap
            y: blob.y + Math.sin(angle) * (blob.radius),
            radius: newRadius,
            boostX: Math.cos(angle) * SPLIT_FORCE,
-           boostY: Math.sin(angle) * SPLIT_FORCE
+           boostY: Math.sin(angle) * SPLIT_FORCE,
+           createdAt: now
          });
       } else {
         updatedBlobs.push(blob);
@@ -206,29 +212,77 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         player.y = Math.max(player.radius, Math.min(WORLD_HEIGHT - player.radius, player.y));
       });
 
-      // --- 2. Resolve Player-Player Collisions (Repulsion) ---
+      // --- 2. Resolve Player-Player Collisions (Repulsion OR Merge) ---
+      const blobsToRemove = new Set<string>();
+      const now = Date.now();
+
       for (let i = 0; i < playerRef.current.length; i++) {
         for (let j = i + 1; j < playerRef.current.length; j++) {
           const b1 = playerRef.current[i];
           const b2 = playerRef.current[j];
+
+          if (blobsToRemove.has(b1.id) || blobsToRemove.has(b2.id)) continue;
+
           const dx = b1.x - b2.x;
           const dy = b1.y - b2.y;
           const dist = Math.hypot(dx, dy);
           const minDist = b1.radius + b2.radius;
 
-          if (dist < minDist && dist > 0) {
-             const overlap = minDist - dist;
-             const nx = dx / dist;
-             const ny = dy / dist;
-             
-             const force = overlap * 0.05; 
-             
-             b1.x += nx * force;
-             b1.y += ny * force;
-             b2.x -= nx * force;
-             b2.y -= ny * force;
+          // Check if they can merge (both must be old enough)
+          const age1 = now - (b1.createdAt || 0);
+          const age2 = now - (b2.createdAt || 0);
+          const canMerge = age1 > MERGE_COOLDOWN && age2 > MERGE_COOLDOWN;
+
+          if (canMerge) {
+            // ATTRACTION logic (pull towards each other)
+            if (dist < minDist + 50) { // If they are somewhat close
+                 const force = 0.02; // Gentle pull
+                 b1.x -= dx * force;
+                 b1.y -= dy * force;
+                 b2.x += dx * force;
+                 b2.y += dy * force;
+            }
+
+            // MERGE logic
+            // If they overlap significantly (e.g., centers are closer than radius/2) or completely covered
+            // Standard agar.io: if dist < r1 + r2 is overlap. 
+            // Let's require significant overlap to merge smoothly.
+            if (dist < (b1.radius + b2.radius) * 0.6) {
+                // Merge b2 into b1
+                const newArea = (Math.PI * b1.radius * b1.radius) + (Math.PI * b2.radius * b2.radius);
+                const newRadius = Math.sqrt(newArea / Math.PI);
+                
+                // Move center to weighted average
+                const totalArea = newArea; // approximation for mass
+                // Or just use radius as simple weight
+                b1.x = (b1.x * b1.radius + b2.x * b2.radius) / (b1.radius + b2.radius);
+                b1.y = (b1.y * b1.radius + b2.y * b2.radius) / (b1.radius + b2.radius);
+                b1.radius = newRadius;
+                
+                blobsToRemove.add(b2.id);
+            }
+
+          } else {
+            // REPULSION logic (Push apart)
+            if (dist < minDist && dist > 0) {
+                const overlap = minDist - dist;
+                const nx = dx / dist;
+                const ny = dy / dist;
+                
+                const force = overlap * 0.05; 
+                
+                b1.x += nx * force;
+                b1.y += ny * force;
+                b2.x -= nx * force;
+                b2.y -= ny * force;
+            }
           }
         }
+      }
+
+      // Filter out merged blobs
+      if (blobsToRemove.size > 0) {
+        playerRef.current = playerRef.current.filter(b => !blobsToRemove.has(b.id));
       }
 
       // --- 3. Update Bots ---

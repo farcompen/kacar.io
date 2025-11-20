@@ -21,6 +21,7 @@ export interface BlobEntity {
   dy?: number; // Velocity Y
   boostX?: number; // Impulse velocity X for splitting
   boostY?: number; // Impulse velocity Y for splitting
+  createdAt?: number; // Timestamp for merge cooldown
 }
 
 export interface FoodEntity {
