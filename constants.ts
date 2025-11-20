@@ -32,5 +32,9 @@ export const BOT_NAMES = [
   "Titan", "Hyperion", "Chronos", "Helios", "Atlas",
   "Void", "Abyss", "Horizon", "Singularity", "Matter",
   "Proton", "Neutron", "Electron", "Quantum", "Nano",
-  "Alpha", "Omega", "Delta", "Sigma", "Zeta","John","Alex","ibrahim","Ahmet","Sevil","Hülya","Kalender","Sinem","Filiz","handsome","badboy"
+  "Alpha", "Omega", "Delta", "Sigma", 
+  "Zeta","John","Alex","ibrahim","Ahmet",
+  "Sevil","Hülya","Kalender","Sinem","Filiz",
+  "handsome","badboy","frankestein","hellboy",
+  "arsenal","brazil","helga","julia"
 ];
