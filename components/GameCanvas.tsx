@@ -459,10 +459,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
             ? playerRef.current.reduce((sum, p) => sum + p.radius, 0) / playerRef.current.length 
             : INITIAL_PLAYER_RADIUS;
 
-         const isRivalBot = Math.random() < 0.25;
+         const isRivalBot = Math.random() < 0.4;
          let spawnRadius = 15;
          if (isRivalBot) {
-             spawnRadius = Math.max(20, Math.random() * avgPlayerRadius * 0.6);
+             spawnRadius = Math.max(20, Math.random() * avgPlayerRadius * 0.8);
          } else {
              spawnRadius = Math.floor(Math.random() * 30) + 15;
          }
