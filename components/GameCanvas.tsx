@@ -470,13 +470,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
 
          if (rand < 0.10) {
             // 10% - 1.5x Player Size (Big Threat)
-            spawnRadius = Math.max(20, avgPlayerRadius * 1.5);
+            spawnRadius = Math.max(20, avgPlayerRadius);
          } else if (rand < 0.35) {
             // 25% - 1.0x Player Size (Direct Rival) (0.10 + 0.25 = 0.35)
-            spawnRadius = Math.max(20, avgPlayerRadius);
+            spawnRadius = Math.max(20, avgPlayerRadius*0.7);
          } else if (rand < 0.65) {
             // 30% - 0.8x Player Size (Prey) (0.35 + 0.30 = 0.65)
-            spawnRadius = Math.max(20, avgPlayerRadius * 0.8);
+            spawnRadius = Math.max(20, avgPlayerRadius * 0.5);
          } else {
             // 35% - Remainder: Small Random Size (Fodder)
             spawnRadius = Math.floor(Math.random() * 30) + 15;
