@@ -131,27 +131,29 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
     const now = Date.now();
 
     currentBlobs.forEach(blob => {
+      const currentMass = getMass(blob.radius);
+      
+      // Only split if mass is sufficient (check radius proxy)
       if (blob.radius >= MIN_SPLIT_RADIUS) {
-         // Calculate Mass Split (Conservation of Mass)
-         const totalMass = getMass(blob.radius);
-         const halfMass = totalMass / 2;
+         // Mass Conservation: Split mass exactly in half
+         const halfMass = currentMass / 2;
          const newRadius = getRadiusFromMass(halfMass);
          
          // Direction for the split (towards mouse)
          const angle = Math.atan2(mouseRef.current.y, mouseRef.current.x);
          
-         // Update original blob (stays roughly where it is)
+         // Update original blob (stays roughly where it is, but smaller)
          updatedBlobs.push({
            ...blob,
            radius: newRadius,
-           createdAt: now
+           createdAt: now // Reset merge timer on split
          });
 
          // Create projectile blob
          newBlobs.push({
            ...blob,
            id: `${blob.id}-${now}`,
-           x: blob.x + Math.cos(angle) * (blob.radius), // Start slightly ahead
+           x: blob.x + Math.cos(angle) * (blob.radius), // Start slightly ahead to avoid immediate collision issues
            y: blob.y + Math.sin(angle) * (blob.radius),
            radius: newRadius,
            boostX: Math.cos(angle) * SPLIT_FORCE,
@@ -261,12 +263,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
 
             // MERGE logic
             if (dist < (b1.radius + b2.radius) * 0.6) {
-                // Add Mass
+                // Add Mass (Conservation of Mass)
                 const m1 = getMass(b1.radius);
                 const m2 = getMass(b2.radius);
                 b1.radius = getRadiusFromMass(m1 + m2);
                 
-                // New position weighted
+                // New position weighted by mass
                 b1.x = (b1.x * m1 + b2.x * m2) / (m1 + m2);
                 b1.y = (b1.y * m1 + b2.y * m2) / (m1 + m2);
                 
@@ -275,7 +277,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
           } else if (canGroup) {
             // PHASE 2: Grouping (5s - 10s)
             if (dist < minDist) {
-                // TOUCHING: Act solid
+                // TOUCHING: Act solid (prevent overlap)
                 const overlap = minDist - dist;
                 const nx = dx / dist;
                 const ny = dy / dist;
@@ -285,8 +287,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
                 b2.x -= nx * force;
                 b2.y -= ny * force;
             } else {
-                // APART: Magnetic Pull
-                const pullFactor = 0.02; 
+                // APART: Strong Magnetic Pull to bring them together
+                const pullFactor = 0.1; // Stronger pull to group them quickly
                 b1.x -= dx * pullFactor;
                 b1.y -= dy * pullFactor;
                 b2.x += dx * pullFactor;
@@ -367,6 +369,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         for (const playerBlob of playerRef.current) {
           const dist = Math.hypot(playerBlob.x - food.x, playerBlob.y - food.y);
           if (dist < playerBlob.radius) {
+            // Mass Addition
             const currentMass = getMass(playerBlob.radius);
             playerBlob.radius = getRadiusFromMass(currentMass + FOOD_MASS_GAIN);
             eaten = true;
@@ -377,6 +380,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
            for (const bot of botsRef.current) {
              const dist = Math.hypot(bot.x - food.x, bot.y - food.y);
              if (dist < bot.radius) {
+                // Mass Addition
                 const currentMass = getMass(bot.radius);
                 bot.radius = getRadiusFromMass(currentMass + FOOD_MASS_GAIN);
                 eaten = true;
@@ -398,7 +402,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         });
       }
 
-      // --- SCORE CALCULATION (Mass Based) ---
+      // --- SCORE CALCULATION (Strict Mass Based) ---
+      // Calculate total mass (which corresponds to score)
       const currentTotalMass = Math.floor(playerRef.current.reduce((acc, p) => acc + getMass(p.radius), 0));
       if (currentTotalMass > 0) {
           lastMaxScoreRef.current = currentTotalMass;
@@ -453,18 +458,28 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
           }
       }
 
-      // Replenish Bots
+      // Replenish Bots with Specific Percentages
        while (botsRef.current.length < MAX_BOTS) {
+         // Calculate average player radius
          const avgPlayerRadius = playerRef.current.length > 0 
             ? playerRef.current.reduce((sum, p) => sum + p.radius, 0) / playerRef.current.length 
             : INITIAL_PLAYER_RADIUS;
 
-         const isRivalBot = Math.random() < 0.4;
+         const rand = Math.random();
          let spawnRadius = 15;
-         if (isRivalBot) {
-             spawnRadius = Math.max(20, Math.random() * avgPlayerRadius * 0.8);
+
+         if (rand < 0.10) {
+            // 10% - 1.5x Player Size (Big Threat)
+            spawnRadius = Math.max(20, avgPlayerRadius * 1.5);
+         } else if (rand < 0.35) {
+            // 25% - 1.0x Player Size (Direct Rival) (0.10 + 0.25 = 0.35)
+            spawnRadius = Math.max(20, avgPlayerRadius);
+         } else if (rand < 0.65) {
+            // 30% - 0.8x Player Size (Prey) (0.35 + 0.30 = 0.65)
+            spawnRadius = Math.max(20, avgPlayerRadius * 0.8);
          } else {
-             spawnRadius = Math.floor(Math.random() * 30) + 15;
+            // 35% - Remainder: Small Random Size (Fodder)
+            spawnRadius = Math.floor(Math.random() * 30) + 15;
          }
 
          botsRef.current.push({
@@ -514,7 +529,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
       // Camera Logic
       let centroidX = 0;
       let centroidY = 0;
-      let totalRadius = 0; // Use radius for camera weighting, not mass (smoother)
+      let totalRadius = 0; 
 
       if (playerRef.current.length > 0) {
           playerRef.current.forEach(p => {
@@ -546,7 +561,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
           canvas.height / (maxDistY * 2.5 || 1)
       );
       
-      // Approximate total area for zoom calc
+      // Zoom based on radius logic for smoother scaling
       const totalArea = playerRef.current.reduce((acc, p) => acc + (p.radius * p.radius), 0);
       const effectiveRadius = Math.sqrt(totalArea);
       const sizeZoom = 1 / (Math.pow(effectiveRadius, 0.4) / 3);
