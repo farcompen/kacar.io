@@ -37,6 +37,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
   const lastMaxScoreRef = useRef<number>(INITIAL_PLAYER_RADIUS);
   const isGameOverRef = useRef<boolean>(false);
 
+  // Helper Math functions
+  const getArea = (r: number) => Math.PI * r * r;
+  const getRadius = (area: number) => Math.sqrt(area / Math.PI);
+
   // Initialize game entities
   useEffect(() => {
     isGameOverRef.current = false;
@@ -170,7 +174,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
     const update = () => {
       if (isGameOverRef.current) return;
       if (playerRef.current.length === 0 && !isGameOverRef.current) {
-        // Fail-safe if player array is empty but game over wasn't triggered
         return;
       }
 
@@ -234,27 +237,20 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
           const canMerge = age1 > MERGE_COOLDOWN && age2 > MERGE_COOLDOWN;
 
           if (canMerge) {
-            // ATTRACTION logic (pull towards each other)
-            if (dist < minDist + 50) { // If they are somewhat close
-                 const force = 0.02; // Gentle pull
+            // ATTRACTION logic
+            if (dist < minDist + 50) { 
+                 const force = 0.02;
                  b1.x -= dx * force;
                  b1.y -= dy * force;
                  b2.x += dx * force;
                  b2.y += dy * force;
             }
 
-            // MERGE logic
-            // If they overlap significantly (e.g., centers are closer than radius/2) or completely covered
-            // Standard agar.io: if dist < r1 + r2 is overlap. 
-            // Let's require significant overlap to merge smoothly.
+            // MERGE logic (Overlap > 60%)
             if (dist < (b1.radius + b2.radius) * 0.6) {
-                // Merge b2 into b1
-                const newArea = (Math.PI * b1.radius * b1.radius) + (Math.PI * b2.radius * b2.radius);
-                const newRadius = Math.sqrt(newArea / Math.PI);
+                const newArea = getArea(b1.radius) + getArea(b2.radius);
+                const newRadius = getRadius(newArea);
                 
-                // Move center to weighted average
-            //    const totalArea = newArea; // approximation for mass
-                // Or just use radius as simple weight
                 b1.x = (b1.x * b1.radius + b2.x * b2.radius) / (b1.radius + b2.radius);
                 b1.y = (b1.y * b1.radius + b2.y * b2.radius) / (b1.radius + b2.radius);
                 b1.radius = newRadius;
@@ -263,14 +259,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
             }
 
           } else {
-            // REPULSION logic (Push apart)
+            // REPULSION logic
             if (dist < minDist && dist > 0) {
                 const overlap = minDist - dist;
                 const nx = dx / dist;
                 const ny = dy / dist;
-                
                 const force = overlap * 0.05; 
-                
                 b1.x += nx * force;
                 b1.y += ny * force;
                 b2.x -= nx * force;
@@ -280,22 +274,30 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         }
       }
 
-      // Filter out merged blobs
       if (blobsToRemove.size > 0) {
         playerRef.current = playerRef.current.filter(b => !blobsToRemove.has(b.id));
       }
 
-      // --- 3. Update Bots ---
+      // --- 3. Update Bots (Improved Physics & Interaction) ---
+      
+      // 3.1 Bot Movement & Physics
       botsRef.current.forEach(bot => {
-        if (Math.random() < 0.02) {
-          bot.dx = (Math.random() - 0.5) * 6;
-          bot.dy = (Math.random() - 0.5) * 6;
+        // Bigger bots change direction less frequently (more inertia)
+        const directionChangeChance = Math.max(0.005, 0.03 - (bot.radius / 5000)); 
+        
+        if (Math.random() < directionChangeChance) {
+          bot.dx = (Math.random() - 0.5) * 4;
+          bot.dy = (Math.random() - 0.5) * 4;
         }
 
+        // Border bounce
         if (bot.x - bot.radius < 0 || bot.x + bot.radius > WORLD_WIDTH) bot.dx = - (bot.dx || 1);
         if (bot.y - bot.radius < 0 || bot.y + bot.radius > WORLD_HEIGHT) bot.dy = - (bot.dy || 1);
         
-        const botSpeed = (200 / bot.radius + 1.5) * 0.5; 
+        // Speed Calculation: Ensure minimum speed so big bots don't stop
+        // Formula: Starts high for small bots, decays but capped at 1.0 minimum
+        const botSpeed = Math.max(1.0, (250 / bot.radius) + 0.5); 
+        
         const mag = Math.hypot(bot.dx || 0, bot.dy || 0);
         const vx = (bot.dx || 0) / (mag || 1) * botSpeed;
         const vy = (bot.dy || 0) / (mag || 1) * botSpeed;
@@ -307,10 +309,39 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         bot.y = Math.max(bot.radius, Math.min(WORLD_HEIGHT - bot.radius, bot.y));
       });
 
-      const getArea = (r: number) => Math.PI * r * r;
-      const getRadius = (area: number) => Math.sqrt(area / Math.PI);
+      // 3.2 Bot vs Bot Collision (Cannibalism)
+      // We sort by radius desc to handle largest eating first in this frame
+      botsRef.current.sort((a, b) => b.radius - a.radius);
+      const eatenBotIds = new Set<string>();
 
-      // --- 4. Collision Detection (Eating) ---
+      for (let i = 0; i < botsRef.current.length; i++) {
+        const hunter = botsRef.current[i];
+        if (eatenBotIds.has(hunter.id)) continue;
+
+        for (let j = i + 1; j < botsRef.current.length; j++) {
+          const prey = botsRef.current[j];
+          if (eatenBotIds.has(prey.id)) continue;
+
+          const dist = Math.hypot(hunter.x - prey.x, hunter.y - prey.y);
+          
+          // Collision Check
+          if (dist < hunter.radius) {
+             // Eating Rule: Hunter must be at least 10% larger
+             if (hunter.radius > prey.radius * 1.1) {
+                const newArea = getArea(hunter.radius) + getArea(prey.radius);
+                hunter.radius = getRadius(newArea);
+                eatenBotIds.add(prey.id);
+             }
+          }
+        }
+      }
+
+      // Remove bots eaten by other bots
+      if (eatenBotIds.size > 0) {
+        botsRef.current = botsRef.current.filter(b => !eatenBotIds.has(b.id));
+      }
+
+      // --- 4. Collision Detection (Eating Food) ---
       
       // Player(s) vs Food
       foodsRef.current = foodsRef.current.filter(food => {
@@ -323,6 +354,18 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
             eaten = true;
             break; 
           }
+        }
+        // Bots vs Food (Basic optimization: only check if near)
+        if (!eaten) {
+           for (const bot of botsRef.current) {
+             const dist = Math.hypot(bot.x - food.x, bot.y - food.y);
+             if (dist < bot.radius) {
+                const newArea = getArea(bot.radius) + getArea(food.radius);
+                bot.radius = getRadius(newArea);
+                eaten = true;
+                break;
+             }
+           }
         }
         return !eaten;
       });
@@ -339,14 +382,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
       }
 
       // --- CRITICAL: Score Calculation (Before Death Logic) ---
-      // We calculate score HERE, before the player might get eaten.
       const currentTotalScore = playerRef.current.reduce((acc, p) => acc + Math.floor(p.radius), 0);
       if (currentTotalScore > 0) {
           lastMaxScoreRef.current = currentTotalScore;
           setScore(currentTotalScore);
       }
 
-      // Bots vs Player Blobs Interaction
+      // --- 5. Player vs Bot Interaction ---
       const remainingBots: BlobEntity[] = [];
       let playerWasEaten = false;
       let killer = '';
@@ -392,10 +434,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
           if (playerRef.current.length === 0) {
               isGameOverRef.current = true;
               setKillerName(killer);
-              // Use the last known valid score (because current array is empty and score would be 0)
               setScore(lastMaxScoreRef.current);
               setGameState(GameState.GAME_OVER);
-              return; // Stop the update loop immediately
+              return; 
           }
       }
 
@@ -406,7 +447,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
             : INITIAL_PLAYER_RADIUS;
 
          botsRef.current.push({
-            id: `bot-new-${Date.now()}`,
+            id: `bot-new-${Date.now()}-${Math.random()}`,
             x: Math.random() * WORLD_WIDTH,
             y: Math.random() * WORLD_HEIGHT,
             radius: Math.max(10, Math.random() * (avgPlayerRadius * 1.5)), 
@@ -422,7 +463,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
         const playerEntry = {
             id: 'player',
             name: nickname,
-            score: currentTotalScore // Use the locally calculated score
+            score: currentTotalScore 
         };
 
         const botEntries = botsRef.current.map(b => ({
@@ -443,7 +484,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
     };
 
     const draw = () => {
-      // Don't draw if game over (or handle it gracefully)
       if (playerRef.current.length === 0 && !isGameOverRef.current) return;
 
       // Clear background
@@ -455,8 +495,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
       let centroidY = 0;
       let totalMass = 0;
 
-      // If player is dead, maybe stick camera to last position or center?
-      // For now, assume player alive or use last position
       if (playerRef.current.length > 0) {
           playerRef.current.forEach(p => {
               centroidX += p.x * p.radius; 
@@ -468,7 +506,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
               centroidY /= totalMass;
           }
       } else {
-          // Fallback to mouse or center
           centroidX = WORLD_WIDTH / 2;
           centroidY = WORLD_HEIGHT / 2;
       }
