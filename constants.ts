@@ -6,7 +6,7 @@ export const INITIAL_PLAYER_RADIUS = 30;
 export const FOOD_RADIUS = 5;
 export const MAX_BOTS = 70;
 export const MAX_FOOD = 1700;
-
+export const MAX_MASS=10000
 export const MASS_SCALE = 5; // Visual scaling factor: Radius = sqrt(Mass) * MASS_SCALE
 export const COLLISION_COOLDOWN = 5000; // 5 seconds before cells can touch/rub
 export const MIN_SPLIT_RADIUS = 40; // Minimum size required to split

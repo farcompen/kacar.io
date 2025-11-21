@@ -13,7 +13,8 @@ import {
   MERGE_COOLDOWN,
   MASS_SCALE,
   getRandomColor, 
-  BOT_NAMES 
+  BOT_NAMES ,
+  MAX_MASS
 } from '../constants';
 
 interface GameCanvasProps {
@@ -467,8 +468,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
 
          const rand = Math.random();
          let spawnRadius = 15;
-
-         if (rand < 0.05) {
+         if(lastMaxScoreRef.current<MAX_MASS){
+        if (rand < 0.05) {
             // 10% - 1.5x Player Size (Big Threat)
             spawnRadius = Math.max(20, avgPlayerRadius*0.6);
          } else if (rand < 0.20) {
@@ -490,6 +491,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
             // 35% - Remainder: Small Random Size (Fodder)
             spawnRadius = Math.floor(Math.random() * 30) + 15;
          }
+         }
+         else {
+          spawnRadius= Math.floor(Math.random() * 30) + 10;
+         }
+         
 
          botsRef.current.push({
             id: `bot-new-${Date.now()}-${Math.random()}`,
@@ -633,7 +639,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
       ctx.restore();
     };
 
-    const renderLoop = () => {
+    const  renderLoop = () => {
       update();
       draw();
       if (!isGameOverRef.current) {
