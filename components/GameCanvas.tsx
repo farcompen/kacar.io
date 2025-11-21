@@ -493,7 +493,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ nickname, setGameState, setScor
          }
          }
          else {
-          spawnRadius = Math.max(20, avgPlayerRadius * 0.08);
+          spawnRadius = Math.max(20, avgPlayerRadius * 0.2);
          }
          
 
